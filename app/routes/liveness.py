@@ -81,9 +81,12 @@ async def verify_liveness(frames: List[UploadFile] = File(...)):
                 message="Blink not detected. Please try again."
             )
             
+    except HTTPException as e:
+        raise e
     except ValueError as e:
         logger.error(f"Liveness error: {str(e)}")
         return LivenessResponse(success=False, liveness_passed=False, error=str(e))
     except Exception as e:
-        logger.error(f"Internal liveness error: {str(e)}")
-        return LivenessResponse(success=False, liveness_passed=False, error="Internal server error")
+        import traceback
+        logger.error(f"Internal liveness error: {traceback.format_exc()}")
+        return LivenessResponse(success=False, liveness_passed=False, error=f"Internal server error: {str(e)}")

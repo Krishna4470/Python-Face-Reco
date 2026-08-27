@@ -211,9 +211,12 @@ async def verify_and_recognize(
                 message="Liveness verified, but face was not recognized."
             )
 
+    except HTTPException as e:
+        raise e
     except ValueError as e:
         logger.error(f"Verify & Recognize error: {str(e)}")
         return VerifyAndRecognizeResponse(success=False, liveness_passed=False, error=str(e))
     except Exception as e:
-        logger.error(f"Verify & Recognize internal error: {str(e)}")
-        return VerifyAndRecognizeResponse(success=False, liveness_passed=False, error="Internal server error")
+        import traceback
+        logger.error(f"Verify & Recognize internal error: {traceback.format_exc()}")
+        return VerifyAndRecognizeResponse(success=False, liveness_passed=False, error=f"Internal server error: {str(e)}")
