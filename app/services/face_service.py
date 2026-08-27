@@ -40,11 +40,20 @@ class FaceService:
             raise RuntimeError("Face recognition model is not initialized")
             
         img = self.decode_image(image_bytes)
+        return self.get_face_embedding_from_image(img)
         
+    def get_face_embedding_from_image(self, img: np.ndarray) -> np.ndarray:
+        """
+        Detect exactly one face and return its normalized embedding from a decoded image.
+        Raises ValueError if 0 or >1 faces are detected.
+        """
+        if self.app is None:
+            raise RuntimeError("Face recognition model is not initialized")
+            
         faces = self.app.get(img)
         
         if len(faces) == 0:
-            raise ValueError("No face detected in the uploaded image")
+            raise ValueError("No face detected in the image")
         if len(faces) > 1:
             raise ValueError("Multiple faces detected. Please use an image containing only one face.")
             

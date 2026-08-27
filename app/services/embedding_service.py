@@ -116,4 +116,12 @@ class EmbeddingService:
             
         return False, None, 0.0
 
+    def compare_embeddings(self, emb1: np.ndarray, emb2: np.ndarray) -> float:
+        """Helper to compute cosine similarity between two embeddings."""
+        norm_1 = np.linalg.norm(emb1)
+        norm_2 = np.linalg.norm(emb2)
+        if norm_1 == 0 or norm_2 == 0:
+            return 0.0
+        return float(np.dot(emb1, emb2) / (norm_1 * norm_2))
+
 embedding_service = EmbeddingService()

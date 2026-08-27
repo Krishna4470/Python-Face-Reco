@@ -1,13 +1,26 @@
-# Face Recognition API
+# Face Recognition API with Liveness Detection
 
-A production-ready Python Face Recognition API built with FastAPI, InsightFace, and SQLite, designed to be deployed on Railway. This API works as a dedicated microservice that connects with an existing PHP + MySQL Attendance Management System.
+A production-ready Python API built with FastAPI, InsightFace, MediaPipe, and SQLite, designed to be deployed on Railway. This API works as a dedicated microservice that connects with an existing PHP + MySQL Attendance Management System.
 
 ## Features
 
-- Fast and lightweight face detection and recognition using InsightFace (CPU inference).
-- Storage of face embeddings in a local SQLite database.
-- Secure communication using an API Key.
-- Environment variable based configuration.
+- **Face Recognition**: Fast and lightweight face detection and recognition using InsightFace (CPU inference).
+- **Liveness Detection (Blink Verification)**: MediaPipe-based eye blink detection using Eye Aspect Ratio (EAR) across a sequence of camera frames. 
+- **Face Consistency Check**: Verifies that the blinking person matches the face submitted for recognition.
+- **Storage**: Face embeddings stored safely in a local SQLite database using binary blobs.
+- **Security**: Secure communication using `X-API-Key`. Basic rate-limiting included.
+- **Caching**: In-memory caching of embeddings for ultra-fast recognition on low-resource environments.
+
+## Blink Liveness Architecture
+
+To prevent spoofing with static photos, the API requires a sequence of images (frames) captured while the user blinks.
+The flow works as follows:
+1. The frontend captures multiple frames while prompting the user to blink.
+2. The frames are sent to `/api/verify-and-recognize`.
+3. The API calculates the Eye Aspect Ratio (EAR) for both eyes in every frame.
+4. It looks for a sequence where eyes transition from `OPEN` -> `CLOSED` -> `OPEN`.
+5. If a blink is detected, it checks if the face in the liveness frames matches the recognition image.
+6. Finally, it matches the face against the registered SQLite database.
 
 ## Requirements
 
@@ -15,95 +28,49 @@ A production-ready Python Face Recognition API built with FastAPI, InsightFace, 
 
 ## Local Installation
 
-1. **Clone the repository** (if applicable):
+1. **Create and activate a virtual environment**:
    ```bash
-   git clone <your-repo-url>
-   cd face-recognition-api
-   ```
-
-2. **Create and activate a virtual environment**:
-   ```bash
-   # Create virtual environment
    python -m venv venv
-
-   # Activate on Windows
-   venv\Scripts\activate
-
-   # Activate on macOS/Linux
-   source venv/bin/activate
+   venv\Scripts\activate  # Windows
+   # or
+   source venv/bin/activate # macOS/Linux
    ```
 
-3. **Install dependencies**:
+2. **Install dependencies**:
    ```bash
    pip install -r requirements.txt
    ```
 
-4. **Configure environment variables**:
-   Copy the example environment file and edit it with your settings.
+3. **Configure environment variables**:
    ```bash
    cp .env.example .env
    ```
-   *Edit `.env` to set your desired `API_SECRET_KEY` and other configurations.*
+   *Edit `.env` to set your desired `API_SECRET_KEY` and liveness thresholds.*
 
-5. **Run the FastAPI application locally**:
+4. **Run the FastAPI application locally**:
    ```bash
    uvicorn app.main:app --reload
    ```
 
 ## Testing API Endpoints
 
-Once the server is running locally, you can access the automatically generated interactive API documentation (Swagger UI) at:
+Once the server is running locally, access the interactive API documentation at:
 http://127.0.0.1:8000/docs
 
-From there, you can test all the endpoints. Note that most endpoints require the `X-API-Key` header, which you can provide using the "Authorize" button in the Swagger UI.
+### Main Endpoints:
+- `POST /api/register-face`: Register a new face with `person_id`.
+- `POST /api/verify-liveness`: Test blink detection only (submit multiple frames).
+- `POST /api/verify-and-recognize`: Production endpoint. Submit `frames` (for blink) and `recognition_image` (for matching).
+- `POST /api/recognize-face`: Legacy recognition only (can be disabled via `REQUIRE_LIVENESS=true`).
 
 ## Deployment to Railway
 
-1. **Upload the project to GitHub**:
-   - Create a new repository on GitHub.
-   - Commit all your files (ensure `.env` is NOT committed; it is ignored by `.gitignore`).
-   - Push to your GitHub repository.
+1. Push your code to a GitHub repository.
+2. Go to [Railway](https://railway.app/) and create a "New Project" -> "Deploy from GitHub repo".
+3. In your Railway project dashboard, go to the "Variables" tab and add your `.env` variables (e.g., `API_SECRET_KEY`).
+4. **IMPORTANT**: Go to the "Volumes" section in Railway settings and add a volume mounted to `/app/data` to ensure the SQLite database is not lost on restart.
+5. Railway will automatically build and deploy the app.
 
-2. **Deploy to Railway**:
-   - Go to [Railway](https://railway.app/).
-   - Click "New Project" and choose "Deploy from GitHub repo".
-   - Select your repository.
-   - Railway will automatically detect the Python environment and use the `Procfile` to run the app.
+## Security Limitations
 
-3. **Configure Railway Environment Variables**:
-   - In your Railway project dashboard, go to the "Variables" tab.
-   - Add the variables from your `.env` file, especially:
-     - `API_SECRET_KEY`
-     - `MATCH_THRESHOLD`
-     - `MAX_UPLOAD_SIZE_MB`
-   - You can leave `DATABASE_URL` as default if you want to use ephemeral storage, or attach a persistent volume to the `/app/data` directory and update the `DATABASE_URL` accordingly.
-
-4. **Get the Railway Public API URL**:
-   - Railway will generate a public domain for your service (e.g., `https://your-app-production.up.railway.app`).
-   - Use this URL in your PHP application to make API requests.
-
-## PHP Integration
-
-The PHP attendance website should call this Python API using HTTP POST/DELETE requests. Ensure to include the API Key in the headers.
-
-Example PHP cURL request to register a face:
-
-```php
-$ch = curl_init();
-curl_setopt($ch, CURLOPT_URL, "https://<your-railway-url>/api/register-face");
-curl_setopt($ch, CURLOPT_POST, 1);
-curl_setopt($ch, CURLOPT_HTTPHEADER, array(
-    "X-API-Key: " . $YOUR_API_SECRET_KEY
-));
-
-$cfile = new CURLFile('/path/to/image.jpg', 'image/jpeg', 'image');
-$data = array(
-    'person_id' => '25127335500020',
-    'image' => $cfile
-);
-curl_setopt($ch, CURLOPT_POSTFIELDS, $data);
-curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-
-$response = curl_exec($ch);
-curl_close($ch);
-```
+While blink-based liveness improves security significantly against static photos, it is a basic anti-spoofing measure. It may not protect against advanced attacks (like deepfakes or high-res video playbacks). For higher security in the future, challenge randomization (e.g., turn left/right) can be added.

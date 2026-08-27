@@ -83,7 +83,7 @@ Ab aap Postman ya apni PHP website se test kar sakte hain.
   - Method: `GET`
   - Expected Output: `{"status": "healthy", "service": "face-recognition-api"}`
 
-- **URL**: `https://<apka-railway-domain>/api/faces/count`
+- **URL**: `https://python-face-reco-production.up.railway.app/api/faces/count`
   - Method: `GET`
   - Headers:
     - `X-API-Key`: `apni_secret_key_jo_step_3_mein_daali`
