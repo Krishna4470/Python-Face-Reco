@@ -4,9 +4,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.database import engine, Base
-from app.routes import health, face, liveness
+from app.routes import health, face
 from app.services.face_service import face_service
-from app.services.liveness_service import liveness_service
 
 # Configure logging
 logging.basicConfig(
@@ -27,11 +26,9 @@ async def lifespan(app: FastAPI):
         face_service.initialize_model()
     except Exception as e:
         logger.error(f"Failed to initialize Face Recognition model: {e}")
-        
-    try:
-        liveness_service.initialize_model()
-    except Exception as e:
-        logger.error(f"Failed to initialize Liveness model: {e}")
+        # Depending on deployment, you might want to raise to crash the app,
+        # or keep it alive so /health returns something (though model won't work).
+        # We'll log the error and let it proceed, routes will catch the Uninitialized error.
     
     yield
     # Shutdown logic
@@ -56,4 +53,3 @@ app.add_middleware(
 # Include routers
 app.include_router(health.router)
 app.include_router(face.router)
-app.include_router(liveness.router)
