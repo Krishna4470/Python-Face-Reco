@@ -8,4 +8,4 @@ SQLAlchemy==2.0.28
 pydantic==2.6.4
 pydantic-settings==2.2.1
 python-multipart==0.0.9
-mediapipe==0.10.11
+mediapipe>=0.10.30
