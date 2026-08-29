@@ -3,6 +3,7 @@ from typing import Optional
 
 class BaseResponse(BaseModel):
     success: bool
+    admin_id: Optional[str] = None
     error: Optional[str] = None
     message: Optional[str] = None
 

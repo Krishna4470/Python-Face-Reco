@@ -5,8 +5,11 @@ A production-ready Python Face Recognition API built with FastAPI, InsightFace, 
 ## Features
 
 - Fast and lightweight face detection and recognition using InsightFace (CPU inference).
-- Storage of face embeddings in a local SQLite database.
-- Secure communication using an API Key.
+- Multi-tenant face management via optional `admin_id` isolation.
+- Full backward compatibility for single-tenant / legacy usage without `admin_id`.
+- Storage of face embeddings in a local SQLite database with automatic schema migrations.
+- In-memory embedding cache for high-speed face recognition matching.
+- Secure communication using an API Key (`X-API-Key`).
 - Environment variable based configuration.
 
 ## Requirements
@@ -50,43 +53,129 @@ A production-ready Python Face Recognition API built with FastAPI, InsightFace, 
    uvicorn app.main:app --reload
    ```
 
-## Testing API Endpoints
+## Multi-Tenant Support (`admin_id`)
 
-Once the server is running locally, you can access the automatically generated interactive API documentation (Swagger UI) at:
-http://127.0.0.1:8000/docs
+The `admin_id` parameter is **OPTIONAL** across all API endpoints:
 
-From there, you can test all the endpoints. Note that most endpoints require the `X-API-Key` header, which you can provide using the "Authorize" button in the Swagger UI.
+- **When `admin_id` is provided**: The API scopes and isolates face data using the combination of `(admin_id, person_id)`. Different admins can independently register and recognize the same `person_id` (e.g. `admin_id=10, person_id=12345` and `admin_id=20, person_id=12345` are distinct records).
+- **When `admin_id` is omitted, empty, or null**: The API maintains 100% backward compatibility using only `person_id` (unscoped/legacy records).
 
-## Deployment to Railway
+### Uniqueness Rules
+| `admin_id` | `person_id` | Behavior |
+|---|---|---|
+| `10` | `12345` | Valid (Scoped to Admin 10) |
+| `20` | `12345` | Valid (Scoped to Admin 20) |
+| `10` | `12345` | Re-registration updates existing record for Admin 10 |
+| `NULL` / omitted | `99999` | Valid (Legacy unscoped record) |
 
-1. **Upload the project to GitHub**:
-   - Create a new repository on GitHub.
-   - Commit all your files (ensure `.env` is NOT committed; it is ignored by `.gitignore`).
-   - Push to your GitHub repository.
+---
 
-2. **Deploy to Railway**:
-   - Go to [Railway](https://railway.app/).
-   - Click "New Project" and choose "Deploy from GitHub repo".
-   - Select your repository.
-   - Railway will automatically detect the Python environment and use the `Procfile` to run the app.
+## API Endpoints
 
-3. **Configure Railway Environment Variables**:
-   - In your Railway project dashboard, go to the "Variables" tab.
-   - Add the variables from your `.env` file, especially:
-     - `API_SECRET_KEY`
-     - `MATCH_THRESHOLD`
-     - `MAX_UPLOAD_SIZE_MB`
-   - You can leave `DATABASE_URL` as default if you want to use ephemeral storage, or attach a persistent volume to the `/app/data` directory and update the `DATABASE_URL` accordingly.
+All endpoints except `/health` require the `X-API-Key` header.
 
-4. **Get the Railway Public API URL**:
-   - Railway will generate a public domain for your service (e.g., `https://your-app-production.up.railway.app`).
-   - Use this URL in your PHP application to make API requests.
+### 1. Register Face
+- **Endpoint**: `POST /api/register-face`
+- **Content-Type**: `multipart/form-data`
+- **Fields**:
+  - `person_id` (string, required): Identifier for the person.
+  - `image` (file, required): Image file containing exactly one clear human face.
+  - `admin_id` (string, **optional**): Admin or organization identifier.
 
-## PHP Integration
+**Response Example (with `admin_id`):**
+```json
+{
+  "success": true,
+  "admin_id": "10",
+  "person_id": "12345",
+  "message": "Face registered successfully"
+}
+```
 
-The PHP attendance website should call this Python API using HTTP POST/DELETE requests. Ensure to include the API Key in the headers.
+**Response Example (without `admin_id`):**
+```json
+{
+  "success": true,
+  "admin_id": null,
+  "person_id": "12345",
+  "message": "Face registered successfully"
+}
+```
 
-Example PHP cURL request to register a face:
+---
+
+### 2. Recognize Face
+- **Endpoint**: `POST /api/recognize-face`
+- **Content-Type**: `multipart/form-data`
+- **Fields**:
+  - `image` (file, required): Image file containing a human face to match.
+  - `admin_id` (string, **optional**): When provided, searches only within faces registered under this `admin_id`.
+
+**Response Example (Match Found):**
+```json
+{
+  "success": true,
+  "matched": true,
+  "admin_id": "10",
+  "person_id": "12345",
+  "confidence": 88.54
+}
+```
+
+**Response Example (No Match):**
+```json
+{
+  "success": true,
+  "matched": false,
+  "admin_id": "10",
+  "person_id": null,
+  "confidence": 0.0
+}
+```
+
+---
+
+### 3. Delete Face
+- **Endpoint**: `DELETE /api/delete-face/{person_id}?admin_id=10`
+- **Parameters**:
+  - `person_id` (path, required): Person ID to delete.
+  - `admin_id` (query, **optional**): Admin ID scoping the face record.
+
+**Response Example:**
+```json
+{
+  "success": true,
+  "admin_id": "10",
+  "message": "Face for person_id 12345 under admin_id 10 deleted successfully"
+}
+```
+
+---
+
+### 4. Face Count
+- **Endpoint**: `GET /api/faces/count?admin_id=10`
+- **Parameters**:
+  - `admin_id` (query, **optional**): Count faces registered under a specific admin (or all faces if omitted).
+
+**Response Example:**
+```json
+{
+  "success": true,
+  "admin_id": "10",
+  "total_registered_faces": 42
+}
+```
+
+---
+
+### 5. Health Check
+- **Endpoint**: `GET /health` (No authentication required)
+
+---
+
+## PHP Integration Examples
+
+### Register Face (with `admin_id`)
 
 ```php
 $ch = curl_init();
@@ -98,8 +187,9 @@ curl_setopt($ch, CURLOPT_HTTPHEADER, array(
 
 $cfile = new CURLFile('/path/to/image.jpg', 'image/jpeg', 'image');
 $data = array(
-    'person_id' => '25127335500020',
-    'image' => $cfile
+    'admin_id'  => '10', // Optional
+    'person_id' => '12345',
+    'image'     => $cfile
 );
 curl_setopt($ch, CURLOPT_POSTFIELDS, $data);
 curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
@@ -107,3 +197,62 @@ curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
 $response = curl_exec($ch);
 curl_close($ch);
 ```
+
+### Recognize Face (with `admin_id`)
+
+```php
+$ch = curl_init();
+curl_setopt($ch, CURLOPT_URL, "https://<your-railway-url>/api/recognize-face");
+curl_setopt($ch, CURLOPT_POST, 1);
+curl_setopt($ch, CURLOPT_HTTPHEADER, array(
+    "X-API-Key: " . $YOUR_API_SECRET_KEY
+));
+
+$cfile = new CURLFile('/path/to/scan.jpg', 'image/jpeg', 'image');
+$data = array(
+    'admin_id' => '10', // Optional: searches only Admin 10's faces
+    'image'    => $cfile
+);
+curl_setopt($ch, CURLOPT_POSTFIELDS, $data);
+curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+
+$response = curl_exec($ch);
+curl_close($ch);
+```
+
+### Delete Face (with `admin_id`)
+
+```php
+$person_id = '12345';
+$admin_id = '10'; // Optional
+
+$ch = curl_init();
+curl_setopt($ch, CURLOPT_URL, "https://<your-railway-url>/api/delete-face/{$person_id}?admin_id={$admin_id}");
+curl_setopt($ch, CURLOPT_CUSTOMREQUEST, "DELETE");
+curl_setopt($ch, CURLOPT_HTTPHEADER, array(
+    "X-API-Key: " . $YOUR_API_SECRET_KEY
+));
+curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+
+$response = curl_exec($ch);
+curl_close($ch);
+```
+
+---
+
+## Deployment to Railway
+
+1. **Upload the project to GitHub**:
+   - Commit all files (ensure `.env` is NOT committed).
+   - Push to your GitHub repository.
+
+2. **Deploy to Railway**:
+   - Go to [Railway](https://railway.app/).
+   - Click "New Project" and choose "Deploy from GitHub repo".
+   - Railway automatically uses the `Procfile` and `railway.json` to deploy.
+
+3. **Configure Railway Environment Variables**:
+   - `API_SECRET_KEY`
+   - `MATCH_THRESHOLD` (e.g. `0.55`)
+   - `MAX_UPLOAD_SIZE_MB` (e.g. `10`)
+   - `DATABASE_URL` (e.g. `sqlite:///./data/faces.db`)

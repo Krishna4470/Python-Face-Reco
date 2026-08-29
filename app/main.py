@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
-from app.database import engine, Base
+from app.database import engine, Base, run_migrations
 from app.routes import health, face
 from app.services.face_service import face_service
 
@@ -14,6 +14,9 @@ logging.basicConfig(
     handlers=[logging.StreamHandler()]
 )
 logger = logging.getLogger(__name__)
+
+# Run database migrations safely preserving existing data
+run_migrations()
 
 # Create database tables
 Base.metadata.create_all(bind=engine)
